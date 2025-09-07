@@ -1,6 +1,9 @@
 Param (
+    [switch]$Log,
     [switch]$Help
 )
+
+$Version = "1.1"
 
 If ($true -eq $Help) {
 Write-Host @"
@@ -8,7 +11,7 @@ Write-Host @"
    / __ \/ ___/ ___/ ___// / / /
   / /_/ /\__ \\__ \\__ \/ /_/ / 
  / ____/___/ /__/ /__/ / __  /  
-/_/    /____/____/____/_/ /_/   v1.0
+/_/    /____/____/____/_/ /_/   $Version
 
 PowerShell Secure Shell
 Author: Evan Lane
@@ -63,7 +66,7 @@ function Draw-Menu {
    / __ \/ ___/ ___/ ___// / / /
   / /_/ /\__ \\__ \\__ \/ /_/ / 
  / ____/___/ /__/ /__/ / __  /  
-/_/    /____/____/____/_/ /_/   v1.0
+/_/    /____/____/____/_/ /_/   $Version
                                 
 "@
     Write-Host "Select an SSH target or add a new one:`n"
@@ -121,27 +124,51 @@ if ($selectedIndex -eq $menuItems.Count - 2) {
     $sshCommand = "ssh $($entry.User)@$($entry.Host)"
     $hostEnv = Get-HostEnvironment
 
-    Write-Host "Executing: $sshCommand" -ForegroundColor Yellow
+    If ($true -eq $Log) {
+        $logFile = ".\$($entry.Name).log"
+        Write-Host "Executing: $sshCommand" -ForegroundColor Yellow
+        Write-Host "### $(Get-TimeStamp) Connecting to $($entry.Host) as  $($entry.User) [ $sshCommand ] ###" | Tee-Object -FilePath $logFile
+    } Else {
+        Write-Host "Executing: $sshCommand" -ForegroundColor Yellow
+    }
    
     switch ($hostEnv) {
         # Open SSH Session in either, the existing session, a new PowerShell Window or wt.exe new-tab
         <#"WindowsTerminal" { # This functionality is broken.
             # Open in a new tab
             $tabTitle = $entry.Name
-            wt.exe new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command "$sshCommand"
+            if ($log) {
+                wt.exe new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command  "$sshCommand | Tee-Object -FilePath '$logFile' -Append" 
+            } else {
+                wt.exe new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command "$sshCommand"
+            }
         } #>
         "Console" {
-            Invoke-Expression $sshCommand
+            # Run in same window
+            if ($log) {
+                Invoke-Expression $sshCommand | Tee-Object -FilePath $logFile -Append
+            } else {
+                Invoke-Expression $sshCommand
+            }
         }
         "VSCode" {
             Write-Host "SSH in VS Code terminal may not behave as expected. Running in current window..." -ForegroundColor Yellow
-            Invoke-Expression $sshCommand
+            if ($log) {
+                Invoke-Expression $sshCommand | Tee-Object -FilePath $logFile -Append
+            } else {
+                Invoke-Expression $sshCommand
+            }
         }
         "ISE" {
             Write-Host "PowerShell ISE does not support interactive SSH sessions." -ForegroundColor Red
         }
         default {
-            Invoke-Expression $sshCommand  
+            #Write-Host "Unknown host environment. Running SSH in current window..." -ForegroundColor Yellow
+            if ($log) {
+                Invoke-Expression $sshCommand | Tee-Object -FilePath $logFile -Append
+            } else {
+                Invoke-Expression $sshCommand  
+            }
         }
     }
 
