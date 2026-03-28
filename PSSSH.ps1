@@ -3,7 +3,7 @@ Param (
     [switch]$Help
 )
 
-$Version = "1.1"
+$Version = "2.0"
 
 If ($true -eq $Help) {
 Write-Host @"
@@ -17,8 +17,8 @@ PowerShell Secure Shell
 Author: Evan Lane
 Website: https://github.com/evanlanester/PSSSH
 
-A native PowerShell alternative to SSH management.
-Stores entries in $ENV:USERPROFILE\.ssh\ssh_hosts.json
+A native PowerShell alternative to SSH and PSRemote management.
+Stores entries in $ENV:USERPROFILE\.ssh\psssh_hosts.json
 
 -Log enables session outputs to be saved to a log file.
 -Help shows this text.
@@ -29,7 +29,7 @@ https://github.com/evanlanester/PSSSH/issues
     return
 }
 
-$JsonPath = "$ENV:USERPROFILE\.ssh\ssh_hosts.json"
+$JsonPath = "$ENV:USERPROFILE\.ssh\psssh_hosts.json"
 
 # Load existing entries
 if (Test-Path $JsonPath) {
@@ -69,7 +69,7 @@ function Draw-Menu {
 /_/    /____/____/____/_/ /_/   $Version
                                 
 "@
-    Write-Host "Select an SSH target or add a new one:`n"
+    Write-Host "Select an remote target or add a new one:`n"
     for ($i = 0; $i -lt $menuItems.Count; $i++) {
         if ($i -eq $selectedIndex) {
             Write-Host "> $($menuItems[$i])" -ForegroundColor Cyan
@@ -99,12 +99,18 @@ do {
 Clear-Host
 
 if ($selectedIndex -eq $menuItems.Count - 2) {
-    # Add new entry
+    # Add new entry  
+    $validTypes = @("ssh", "psremote")
+    do {
+        $type = Read-Host "Enter a type of connection (ssh/psremote)"
+    } while ($validTypes -notcontains $type.ToLower())
+
     $name = Read-Host "Enter a name for the server"
-    $user = Read-Host "Enter the SSH username"
-    $server = Read-Host "Enter the SSH host"
+    $user = Read-Host "Enter the Remote username"
+    $server = Read-Host "Enter the Remote host"
 
     $newEntry = [PSCustomObject]@{
+        Type = $type
         Name = $name
         User = $user
         Host = $server
@@ -121,53 +127,61 @@ if ($selectedIndex -eq $menuItems.Count - 2) {
 } else {
     # Connect via SSH
     $entry = $entries[$selectedIndex]
-    $sshCommand = "ssh $($entry.User)@$($entry.Host)"
+    switch ($entry.Type) {
+        "ssh" {
+            $remoteCommand = "ssh $($entry.User)@$($entry.Host)"
+        }
+        "psremote" {
+            $remoteCommand = "Enter-PSSession -ComputerName $($entry.Host) -Credential $($Entry.User)"
+        }
+    }
+
     $hostEnv = Get-HostEnvironment
 
     If ($true -eq $Log) {
         $logFile = ".\$($entry.Name).log"
-        Write-Host "Executing: $sshCommand" -ForegroundColor Yellow
-        Write-Host "### $(Get-TimeStamp) Connecting to $($entry.Host) as  $($entry.User) [ $sshCommand ] ###" | Tee-Object -FilePath $logFile
+        Write-Host "Executing: $remoteCommand" -ForegroundColor Yellow
+        Write-Host "### $(Get-TimeStamp) Connecting to $($entry.Host) as  $($entry.User) [ $remoteCommand ] ###" | Tee-Object -FilePath $logFile
     } Else {
-        Write-Host "Executing: $sshCommand" -ForegroundColor Yellow
+        Write-Host "Executing: $remoteCommand" -ForegroundColor Yellow
     }
    
     switch ($hostEnv) {
         # Open SSH Session in either, the existing session, a new PowerShell Window or wt.exe new-tab
-        <#"WindowsTerminal" { # This functionality is broken.
+        <#"WindowsTerminal" { # This functionality is broken - exploring `wt -w 0 nt`
             # Open in a new tab
             $tabTitle = $entry.Name
             if ($log) {
-                wt.exe new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command  "$sshCommand | Tee-Object -FilePath '$logFile' -Append" 
+                wt.exe -w 0 new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command  "$remoteCommand | Tee-Object -FilePath '$logFile' -Append" 
             } else {
-                wt.exe new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command "$sshCommand"
+                wt.exe -w 0 new-tab --title "$tabTitle" powershell -NoProfile -NoExit -Command "$remoteCommand"
             }
         } #>
         "Console" {
             # Run in same window
             if ($log) {
-                Invoke-Expression $sshCommand | Tee-Object -FilePath $logFile -Append
+                Invoke-Expression $remoteCommand | Tee-Object -FilePath $logFile -Append
             } else {
-                Invoke-Expression $sshCommand
+                Invoke-Expression $remoteCommand
             }
         }
         "VSCode" {
-            Write-Host "SSH in VS Code terminal may not behave as expected. Running in current window..." -ForegroundColor Yellow
+            Write-Host "Remote Sessions in VSCode terminal may not behave as expected. Running in current window..." -ForegroundColor Yellow
             if ($log) {
-                Invoke-Expression $sshCommand | Tee-Object -FilePath $logFile -Append
+                Invoke-Expression $remoteCommand | Tee-Object -FilePath $logFile -Append
             } else {
-                Invoke-Expression $sshCommand
+                Invoke-Expression $remoteCommand
             }
         }
         "ISE" {
-            Write-Host "PowerShell ISE does not support interactive SSH sessions." -ForegroundColor Red
+            Write-Host "PowerShell ISE does not support interactive remote sessions." -ForegroundColor Red
         }
         default {
-            #Write-Host "Unknown host environment. Running SSH in current window..." -ForegroundColor Yellow
+            Write-Host "Unknown host environment. Running a Remote Session in current window..." -ForegroundColor Yellow
             if ($log) {
-                Invoke-Expression $sshCommand | Tee-Object -FilePath $logFile -Append
+                Invoke-Expression $remoteCommand | Tee-Object -FilePath $logFile -Append
             } else {
-                Invoke-Expression $sshCommand  
+                Invoke-Expression $remoteCommand  
             }
         }
     }

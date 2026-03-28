@@ -1,0 +1,14 @@
+[
+    {
+        "Type": "ssh",
+        "Name": "SSH Server",
+        "User": "root",
+        "Host": "192.168.1.1" // Hostname or IP Address
+    },
+    {
+        "Type": "psremote",
+        "Name": "PS Remote Server",
+        "User": "Administrator",
+        "Host": "192.168.1.2"
+    }
+]
